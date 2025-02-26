@@ -34,12 +34,12 @@
     <canvas id="gameCanvas" width="600" height="600"></canvas>
     <div id="leaderboard"></div>
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
+    <!-- Firebase SDK (wersja 8.x) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
-        // Twoja konfiguracja Firebase (dostosowana do SDK)
+        // Twoja konfiguracja Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyD7B2QpI1r1_IcmLmLqRdMcuDqmSXD-DhA",
             authDomain: "snakeleaderboard-e0c96.firebaseapp.com",
@@ -51,9 +51,15 @@
         };
 
         // Inicjalizacja Firebase
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
-        const leaderboardRef = database.ref('leaderboard');
+        let database, leaderboardRef;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            database = firebase.database();
+            leaderboardRef = database.ref('leaderboard');
+            console.log("Firebase initialized successfully");
+        } catch (error) {
+            console.error("Error initializing Firebase:", error);
+        }
 
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
@@ -105,11 +111,10 @@
             if (resourcesLoaded === totalResources) {
                 resetGame();
                 requestAnimationFrame(gameLoop);
-                loadLeaderboard();
+                if (leaderboardRef) loadLeaderboard();
             }
         }
 
-        // Obsługa ładowania i błędów dla grafik
         snakeHeadImage.onload = resourceLoaded;
         snakeBodyImage.onload = resourceLoaded;
         foodImage.onload = resourceLoaded;
@@ -122,7 +127,6 @@
         specialFoodImage.onerror = () => console.log("Error loading special_food.png");
         backgroundImage.onerror = () => console.log("Error loading background.png");
 
-        // Obsługa ładowania i błędów dla dźwięków
         eatSound.onloadeddata = resourceLoaded;
         gameOverSound.onloadeddata = resourceLoaded;
         startSound.onloadeddata = resourceLoaded;
@@ -250,6 +254,10 @@
         }
 
         function saveScore() {
+            if (!leaderboardRef) {
+                console.log("Leaderboard not available - Firebase not initialized");
+                return;
+            }
             const playerName = prompt("Enter your name for the leaderboard:");
             if (playerName) {
                 const entry = {
@@ -257,26 +265,45 @@
                     score: score,
                     timestamp: Date.now()
                 };
-                leaderboardRef.push(entry);
+                leaderboardRef.push(entry).then(() => {
+                    console.log("Score saved to leaderboard");
+                    loadLeaderboard(); // Odśwież leaderboard po zapisaniu
+                }).catch((error) => {
+                    console.error("Error saving score:", error);
+                });
             }
         }
 
         function loadLeaderboard() {
-            leaderboardRef.orderByChild("score").limitToLast(10).on("value", (snapshot) => {
+            if (!leaderboardRef) {
+                console.log("Leaderboard not available - Firebase not initialized");
+                leaderboardDisplay.innerHTML = "Leaderboard unavailable";
+                return;
+            }
+            leaderboardRef.orderByChild("score").limitToLast(10).once("value", (snapshot) => {
                 const leaderboard = [];
                 snapshot.forEach((childSnapshot) => {
-                    leaderboard.push(childSnapshot.val());
+                    const entry = childSnapshot.val();
+                    leaderboard.push(entry);
                 });
-                leaderboard.sort((a, b) => b.score - a.score); // Sortowanie malejąco
+                leaderboard.sort((a, b) => b.score - a.score); // Sortuj malejąco
+                console.log("Leaderboard data loaded:", leaderboard);
                 displayLeaderboard(leaderboard);
+            }, (error) => {
+                console.error("Error loading leaderboard:", error.message);
+                leaderboardDisplay.innerHTML = "Error loading leaderboard: " + error.message;
             });
         }
 
         function displayLeaderboard(leaderboard) {
             leaderboardDisplay.innerHTML = "<h3>Leaderboard</h3>";
-            leaderboard.forEach((entry, index) => {
-                leaderboardDisplay.innerHTML += `${index + 1}. ${entry.name}: ${entry.score}<br>`;
-            });
+            if (leaderboard.length === 0) {
+                leaderboardDisplay.innerHTML += "No scores yet.";
+            } else {
+                leaderboard.forEach((entry, index) => {
+                    leaderboardDisplay.innerHTML += `${index + 1}. ${entry.name}: ${entry.score}<br>`;
+                });
+            }
         }
 
         function gameLoop(timestamp) {
@@ -305,7 +332,6 @@
                 const head = { x: snake[0].x + dx, y: snake[0].y + dy };
                 snake.unshift(head);
 
-                let ateFood = false;
                 if (head.x === food.x && head.y === food.y) {
                     food = {
                         x: Math.floor(Math.random() * tileCount),
@@ -313,17 +339,12 @@
                     };
                     score += 1;
                     eatSound.play();
-                    growSnake(1); // Wzrost o 1 pole
-                    ateFood = true;
                 } else if (specialFood && head.x === specialFood.x && head.y === specialFood.y) {
                     specialFood = null;
                     score += 5;
                     specialEatSound.play();
-                    growSnake(3); // Wzrost o 3 pola
-                    ateFood = true;
-                }
-
-                if (!ateFood) {
+                    growSnake(2); // Dodajemy 2, bo 1 pochodzi z ruchu
+                } else {
                     snake.pop();
                 }
 
