@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Snake Game</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #score {
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0 | High Score: 0</div>
+    <canvas id="gameCanvas" width="600" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreDisplay = document.getElementById("score");
+
+        const gridSize = 20;
+        const tileCount = canvas.width / gridSize;
+        let snake = [];
+        let food = {};
+        let dx = 0;
+        let dy = 0;
+        let baseSpeed = 10;
+        let speedMultiplier = 1;
+        let gameOver = false;
+        let score = 0;
+        let highScore = localStorage.getItem("highScore") ? parseInt(localStorage.getItem("highScore")) : 0;
+        let lastTime = 0;
+        let lastMoveTime = 0;
+        let keyHoldStart = null;
+        let hasStarted = false; // Flaga do śledzenia pierwszego ruchu
+
+        // Ładowanie grafik
+        const snakeHeadImage = new Image();
+        snakeHeadImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/head.png";
+        const snakeBodyImage = new Image();
+        snakeBodyImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/body.png";
+        const foodImage = new Image();
+        foodImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/food.png";
+        const backgroundImage = new Image();
+        backgroundImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/background.png";
+
+        // Ładowanie dźwięków
+        const eatSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/eat.mp3");
+        const gameOverSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/gameover.mp3");
+        const startSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/start.mp3");
+
+        let imagesLoaded = 0;
+        const totalImages = 4;
+
+        function imageLoaded() {
+            imagesLoaded++;
+            if (imagesLoaded === totalImages) {
+                resetGame();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        snakeHeadImage.onload = imageLoaded;
+        snakeBodyImage.onload = imageLoaded;
+        foodImage.onload = imageLoaded;
+        backgroundImage.onload = imageLoaded;
+
+        snakeHeadImage.onerror = () => console.log("Error loading head.png");
+        snakeBodyImage.onerror = () => console.log("Error loading body.png");
+        foodImage.onerror = () => console.log("Error loading food.png");
+        backgroundImage.onerror = () => console.log("Error loading background.png");
+
+        scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
+
+        function resetGame() {
+            snake = [{ x: 10, y: 10 }];
+            food = {
+                x: Math.floor(Math.random() * tileCount),
+                y: Math.floor(Math.random() * tileCount)
+            };
+            dx = 0;
+            dy = 0;
+            gameOver = false;
+            score = 0;
+            baseSpeed = 10;
+            speedMultiplier = 1;
+            keyHoldStart = null;
+            hasStarted = false; // Reset flagi startu
+            scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
+        }
+
+        document.addEventListener("keydown", changeDirection);
+        document.addEventListener("keyup", resetSpeed);
+
+        function changeDirection(event) {
+            const LEFT_KEY = 37;
+            const RIGHT_KEY = 39;
+            const UP_KEY = 38;
+            const DOWN_KEY = 40;
+            const SPACE_KEY = 32;
+
+            const keyPressed = event.keyCode;
+            const goingUp = dy === -1;
+            const goingDown = dy === 1;
+            const goingRight = dx === 1;
+            const goingLeft = dx === -1;
+
+            if (gameOver && keyPressed === SPACE_KEY) {
+                resetGame();
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            if (keyPressed === LEFT_KEY && !goingRight) {
+                dx = -1;
+                dy = 0;
+                if (!keyHoldStart) keyHoldStart = performance.now();
+                if (!hasStarted) {
+                    hasStarted = true;
+                    startSound.play(); // Dźwięk przy pierwszym ruchu
+                }
+            }
+            if (keyPressed === UP_KEY && !goingDown) {
+                dx = 0;
+                dy = -1;
+                if (!keyHoldStart) keyHoldStart = performance.now();
+                if (!hasStarted) {
+                    hasStarted = true;
+                    startSound.play(); // Dźwięk przy pierwszym ruchu
+                }
+            }
+            if (keyPressed === RIGHT_KEY && !goingLeft) {
+                dx = 1;
+                dy = 0;
+                if (!keyHoldStart) keyHoldStart = performance.now();
+                if (!hasStarted) {
+                    hasStarted = true;
+                    startSound.play(); // Dźwięk przy pierwszym ruchu
+                }
+            }
+            if (keyPressed === DOWN_KEY && !goingUp) {
+                dx = 0;
+                dy = 1;
+                if (!keyHoldStart) keyHoldStart = performance.now();
+                if (!hasStarted) {
+                    hasStarted = true;
+                    startSound.play(); // Dźwięk przy pierwszym ruchu
+                }
+            }
+        }
+
+        function resetSpeed() {
+            keyHoldStart = null;
+            speedMultiplier = 1;
+        }
+
+        function updateHighScore() {
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem("highScore", highScore);
+            }
+            scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
+        }
+
+        function gameLoop(timestamp) {
+            if (gameOver) {
+                updateHighScore();
+                ctx.fillStyle = "black";
+                ctx.font = "30px Arial";
+                ctx.fillText("Game Over! Press Space to Restart", 50, canvas.height / 2);
+                gameOverSound.play(); // Dźwięk przegranej
+                return;
+            }
+
+            if (!lastTime) lastTime = timestamp;
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            if (keyHoldStart && (performance.now() - keyHoldStart) > 500) {
+                speedMultiplier = 2;
+            }
+
+            const frameTime = 1000 / (baseSpeed * speedMultiplier);
+            lastMoveTime += deltaTime;
+
+            if (lastMoveTime >= frameTime) {
+                const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+                snake.unshift(head);
+
+                if (head.x === food.x && head.y === food.y) {
+                    food = {
+                        x: Math.floor(Math.random() * tileCount),
+                        y: Math.floor(Math.random() * tileCount)
+                    };
+                    score += 1;
+                    if (score % 5 === 0) {
+                        baseSpeed += 2;
+                    }
+                    scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
+                    eatSound.play(); // Dźwięk zjedzenia jedzenia
+                } else {
+                    snake.pop();
+                }
+
+                if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
+                    gameOver = true;
+                }
+
+                for (let i = 1; i < snake.length; i++) {
+                    if (head.x === snake[i].x && head.y === snake[i].y) {
+                        gameOver = true;
+                    }
+                }
+
+                lastMoveTime = 0;
+            }
+
+            ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+
+            snake.forEach((segment, index) => {
+                if (index === 0) {
+                    ctx.drawImage(snakeHeadImage, segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
+                } else {
+                    ctx.drawImage(snakeBodyImage, segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
+                }
+            });
+
+            ctx.drawImage(foodImage, food.x * gridSize, food.y * gridSize, gridSize, gridSize);
+
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
