@@ -34,12 +34,24 @@
     <canvas id="gameCanvas" width="600" height="600"></canvas>
     <div id="leaderboard"></div>
 
-    <!-- Firebase SDK (wersja 8.x) -->
+    <!-- Firebase SDK (version 8.x) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
+    <!-- Load WASM module for score proof -->
+    <script type="module">
+        import init, { prove_score } from './pkg/score_proof.js';
+        
+        async function loadWasm() {
+            await init();
+            window.wasmModule = { prove_score };
+            console.log("Score proof WASM loaded");
+        }
+        loadWasm();
+    </script>
+
     <script>
-        // Twoja konfiguracja Firebase
+        // Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyD7B2QpI1r1_IcmLmLqRdMcuDqmSXD-DhA",
             authDomain: "snakeleaderboard-e0c96.firebaseapp.com",
@@ -50,7 +62,7 @@
             appId: "1:197216136086:web:23c02ef969c3de862a8bb7"
         };
 
-        // Inicjalizacja Firebase
+        // Initialize Firebase
         let database, leaderboardRef;
         try {
             firebase.initializeApp(firebaseConfig);
@@ -83,8 +95,9 @@
         let keyHoldStart = null;
         let hasStarted = false;
         let speedIncrementCount = 0;
+        let gameEvents = []; // Added to track score events
 
-        // Ładowanie grafik
+        // Load graphics
         const snakeHeadImage = new Image();
         snakeHeadImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/head.png";
         const snakeBodyImage = new Image();
@@ -96,21 +109,21 @@
         const backgroundImage = new Image();
         backgroundImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/background.png";
 
-        // Ładowanie dźwięków
+        // Load sounds
         const eatSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/eat.mp3");
         const gameOverSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/gameover.mp3");
         const startSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/start.mp3");
         const specialEatSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/special_eat.mp3");
 
         let resourcesLoaded = 0;
-        const totalResources = 9; // 5 grafik + 4 dźwięki
+        const totalResources = 9; // 5 graphics + 4 sounds
 
         function resourceLoaded() {
             resourcesLoaded++;
             console.log(`Loaded ${resourcesLoaded}/${totalResources} resources`);
             if (resourcesLoaded === totalResources) {
                 resetGame();
-                requestAnimationFrame(gameLoop);
+                requestAnimationFrame(gameLoop); // Initial call remains the same
                 if (leaderboardRef) loadLeaderboard();
             }
         }
@@ -150,6 +163,7 @@
             dy = 0;
             gameOver = false;
             score = 0;
+            gameEvents = []; // Reset events for new game
             baseSpeed = 10;
             speedMultiplier = 1;
             keyHoldStart = null;
@@ -263,11 +277,12 @@
                 const entry = {
                     name: playerName,
                     score: score,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    proof: window.lastProof ? Array.from(window.lastProof) : [1, 2, 3] // Include proof
                 };
                 leaderboardRef.push(entry).then(() => {
-                    console.log("Score saved to leaderboard");
-                    loadLeaderboard(); // Odśwież leaderboard po zapisaniu
+                    console.log("Score and proof saved");
+                    loadLeaderboard();
                 }).catch((error) => {
                     console.error("Error saving score:", error);
                 });
@@ -286,7 +301,7 @@
                     const entry = childSnapshot.val();
                     leaderboard.push(entry);
                 });
-                leaderboard.sort((a, b) => b.score - a.score); // Sortuj malejąco
+                leaderboard.sort((a, b) => b.score - a.score);
                 console.log("Leaderboard data loaded:", leaderboard);
                 displayLeaderboard(leaderboard);
             }, (error) => {
@@ -301,14 +316,23 @@
                 leaderboardDisplay.innerHTML += "No scores yet.";
             } else {
                 leaderboard.forEach((entry, index) => {
-                    leaderboardDisplay.innerHTML += `${index + 1}. ${entry.name}: ${entry.score}<br>`;
+                    const verified = entry.proof && entry.proof.length > 0 ? " (Verified)" : "";
+                    leaderboardDisplay.innerHTML += `${index + 1}. ${entry.name}: ${entry.score}${verified}<br>`;
                 });
             }
         }
 
-        function gameLoop(timestamp) {
+        // Made async to handle WASM calls
+        async function gameLoop(timestamp) {
             if (gameOver) {
                 updateHighScore();
+                if (window.wasmModule) {
+                    const proofResult = await window.wasmModule.prove_score(gameEvents);
+                    const [provenScore, proof] = proofResult;
+                    score = provenScore; // Update score with proven value
+                    window.lastProof = proof; // Store proof for leaderboard
+                    console.log("Proven score:", score, "Proof:", proof);
+                }
                 saveScore();
                 ctx.fillStyle = "black";
                 ctx.font = "30px Arial";
@@ -337,13 +361,15 @@
                         x: Math.floor(Math.random() * tileCount),
                         y: Math.floor(Math.random() * tileCount)
                     };
-                    score += 1;
+                    gameEvents.push({ type: "food", timestamp: Date.now() }); // Track event
+                    score += 1; // Temporary, will rely on proof later
                     eatSound.play();
                 } else if (specialFood && head.x === specialFood.x && head.y === specialFood.y) {
                     specialFood = null;
-                    score += 5;
+                    gameEvents.push({ type: "special_food", timestamp: Date.now() }); // Track event
+                    score += 5; // Temporary
                     specialEatSound.play();
-                    growSnake(2); // Dodajemy 2, bo 1 pochodzi z ruchu
+                    growSnake(2);
                 } else {
                     snake.pop();
                 }
