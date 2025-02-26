@@ -21,16 +21,44 @@
             font-size: 24px;
             margin-bottom: 10px;
         }
+        #leaderboard {
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            margin-top: 20px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div id="score">Score: 0 | High Score: 0</div>
     <canvas id="gameCanvas" width="600" height="600"></canvas>
+    <div id="leaderboard"></div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
 
     <script>
+        // Twoja konfiguracja Firebase (dostosowana do SDK)
+        const firebaseConfig = {
+            apiKey: "AIzaSyD7B2QpI1r1_IcmLmLqRdMcuDqmSXD-DhA",
+            authDomain: "snakeleaderboard-e0c96.firebaseapp.com",
+            databaseURL: "https://snakeleaderboard-e0c96-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "snakeleaderboard-e0c96",
+            storageBucket: "snakeleaderboard-e0c96.firebasestorage.app",
+            messagingSenderId: "197216136086",
+            appId: "1:197216136086:web:23c02ef969c3de862a8bb7"
+        };
+
+        // Inicjalizacja Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const leaderboardRef = database.ref('leaderboard');
+
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
         const scoreDisplay = document.getElementById("score");
+        const leaderboardDisplay = document.getElementById("leaderboard");
 
         const gridSize = 20;
         const tileCount = canvas.width / gridSize;
@@ -68,22 +96,25 @@
         const startSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/start.mp3");
         const specialEatSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/special_eat.mp3");
 
-        let imagesLoaded = 0;
-        const totalImages = 5;
+        let resourcesLoaded = 0;
+        const totalResources = 9; // 5 grafik + 4 dźwięki
 
-        function imageLoaded() {
-            imagesLoaded++;
-            if (imagesLoaded === totalImages) {
+        function resourceLoaded() {
+            resourcesLoaded++;
+            console.log(`Loaded ${resourcesLoaded}/${totalResources} resources`);
+            if (resourcesLoaded === totalResources) {
                 resetGame();
                 requestAnimationFrame(gameLoop);
+                loadLeaderboard();
             }
         }
 
-        snakeHeadImage.onload = imageLoaded;
-        snakeBodyImage.onload = imageLoaded;
-        foodImage.onload = imageLoaded;
-        specialFoodImage.onload = imageLoaded;
-        backgroundImage.onload = imageLoaded;
+        // Obsługa ładowania i błędów dla grafik
+        snakeHeadImage.onload = resourceLoaded;
+        snakeBodyImage.onload = resourceLoaded;
+        foodImage.onload = resourceLoaded;
+        specialFoodImage.onload = resourceLoaded;
+        backgroundImage.onload = resourceLoaded;
 
         snakeHeadImage.onerror = () => console.log("Error loading head.png");
         snakeBodyImage.onerror = () => console.log("Error loading body.png");
@@ -91,10 +122,21 @@
         specialFoodImage.onerror = () => console.log("Error loading special_food.png");
         backgroundImage.onerror = () => console.log("Error loading background.png");
 
+        // Obsługa ładowania i błędów dla dźwięków
+        eatSound.onloadeddata = resourceLoaded;
+        gameOverSound.onloadeddata = resourceLoaded;
+        startSound.onloadeddata = resourceLoaded;
+        specialEatSound.onloadeddata = resourceLoaded;
+
+        eatSound.onerror = () => console.log("Error loading eat.mp3");
+        gameOverSound.onerror = () => console.log("Error loading gameover.mp3");
+        startSound.onerror = () => console.log("Error loading start.mp3");
+        specialEatSound.onerror = () => console.log("Error loading special_eat.mp3");
+
         scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
 
         function resetGame() {
-            snake = [{ x: 10, y: 10 }]; // Początkowa długość: 1 pole
+            snake = [{ x: 10, y: 10 }];
             food = {
                 x: Math.floor(Math.random() * tileCount),
                 y: Math.floor(Math.random() * tileCount)
@@ -111,6 +153,7 @@
             speedIncrementCount = 0;
             lastMoveTime = 0;
             scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
+            console.log("Game reset");
         }
 
         document.addEventListener("keydown", changeDirection);
@@ -142,6 +185,7 @@
                 if (!hasStarted) {
                     hasStarted = true;
                     startSound.play();
+                    console.log("Game started");
                 }
             }
             if (keyPressed === UP_KEY && !goingDown) {
@@ -151,6 +195,7 @@
                 if (!hasStarted) {
                     hasStarted = true;
                     startSound.play();
+                    console.log("Game started");
                 }
             }
             if (keyPressed === RIGHT_KEY && !goingLeft) {
@@ -160,6 +205,7 @@
                 if (!hasStarted) {
                     hasStarted = true;
                     startSound.play();
+                    console.log("Game started");
                 }
             }
             if (keyPressed === DOWN_KEY && !goingUp) {
@@ -169,6 +215,7 @@
                 if (!hasStarted) {
                     hasStarted = true;
                     startSound.play();
+                    console.log("Game started");
                 }
             }
         }
@@ -196,15 +243,46 @@
         }
 
         function growSnake(amount) {
-            const tail = { ...snake[snake.length - 1] }; // Kopia pozycji ogona
+            const tail = { ...snake[snake.length - 1] };
             for (let i = 0; i < amount; i++) {
                 snake.push(tail);
             }
         }
 
+        function saveScore() {
+            const playerName = prompt("Enter your name for the leaderboard:");
+            if (playerName) {
+                const entry = {
+                    name: playerName,
+                    score: score,
+                    timestamp: Date.now()
+                };
+                leaderboardRef.push(entry);
+            }
+        }
+
+        function loadLeaderboard() {
+            leaderboardRef.orderByChild("score").limitToLast(10).on("value", (snapshot) => {
+                const leaderboard = [];
+                snapshot.forEach((childSnapshot) => {
+                    leaderboard.push(childSnapshot.val());
+                });
+                leaderboard.sort((a, b) => b.score - a.score); // Sortowanie malejąco
+                displayLeaderboard(leaderboard);
+            });
+        }
+
+        function displayLeaderboard(leaderboard) {
+            leaderboardDisplay.innerHTML = "<h3>Leaderboard</h3>";
+            leaderboard.forEach((entry, index) => {
+                leaderboardDisplay.innerHTML += `${index + 1}. ${entry.name}: ${entry.score}<br>`;
+            });
+        }
+
         function gameLoop(timestamp) {
             if (gameOver) {
                 updateHighScore();
+                saveScore();
                 ctx.fillStyle = "black";
                 ctx.font = "30px Arial";
                 ctx.fillText("Game Over! Press Space to Restart", 50, canvas.height / 2);
@@ -224,11 +302,9 @@
             lastMoveTime += deltaTime;
 
             if (lastMoveTime >= frameTime) {
-                // Ruch węża
                 const head = { x: snake[0].x + dx, y: snake[0].y + dy };
                 snake.unshift(head);
 
-                // Sprawdzanie jedzenia
                 let ateFood = false;
                 if (head.x === food.x && head.y === food.y) {
                     food = {
@@ -247,18 +323,15 @@
                     ateFood = true;
                 }
 
-                // Skrócenie węża tylko, jeśli nie zjedzono jedzenia
                 if (!ateFood) {
                     snake.pop();
                 }
 
-                // Przyspieszenie co 5 punktów
                 if (score % 5 === 0 && score > 0 && Math.floor(score / 5) > speedIncrementCount) {
                     speedIncrementCount++;
                     baseSpeed = Math.min(baseSpeed + 1, 20);
                 }
 
-                // Kolizje
                 if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
                     gameOver = true;
                 }
@@ -270,12 +343,9 @@
 
                 spawnSpecialFood();
                 lastMoveTime = 0;
-
-                // Debugowanie długości węża
                 console.log(`Snake length: ${snake.length}`);
             }
 
-            // Rysowanie bez animacji
             ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
 
             snake.forEach((segment, index) => {
