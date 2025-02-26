@@ -36,6 +36,7 @@
         const tileCount = canvas.width / gridSize;
         let snake = [];
         let food = {};
+        let specialFood = null;
         let dx = 0;
         let dy = 0;
         let baseSpeed = 10;
@@ -46,7 +47,7 @@
         let lastTime = 0;
         let lastMoveTime = 0;
         let keyHoldStart = null;
-        let hasStarted = false; // Flaga do śledzenia pierwszego ruchu
+        let hasStarted = false;
 
         // Ładowanie grafik
         const snakeHeadImage = new Image();
@@ -55,6 +56,8 @@
         snakeBodyImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/body.png";
         const foodImage = new Image();
         foodImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/food.png";
+        const specialFoodImage = new Image();
+        specialFoodImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/special_food.png";
         const backgroundImage = new Image();
         backgroundImage.src = "https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/background.png";
 
@@ -62,9 +65,10 @@
         const eatSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/eat.mp3");
         const gameOverSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/gameover.mp3");
         const startSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/start.mp3");
+        const specialEatSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/special_eat.mp3");
 
         let imagesLoaded = 0;
-        const totalImages = 4;
+        const totalImages = 5;
 
         function imageLoaded() {
             imagesLoaded++;
@@ -77,11 +81,13 @@
         snakeHeadImage.onload = imageLoaded;
         snakeBodyImage.onload = imageLoaded;
         foodImage.onload = imageLoaded;
+        specialFoodImage.onload = imageLoaded;
         backgroundImage.onload = imageLoaded;
 
         snakeHeadImage.onerror = () => console.log("Error loading head.png");
         snakeBodyImage.onerror = () => console.log("Error loading body.png");
         foodImage.onerror = () => console.log("Error loading food.png");
+        specialFoodImage.onerror = () => console.log("Error loading special_food.png");
         backgroundImage.onerror = () => console.log("Error loading background.png");
 
         scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
@@ -92,6 +98,7 @@
                 x: Math.floor(Math.random() * tileCount),
                 y: Math.floor(Math.random() * tileCount)
             };
+            specialFood = null;
             dx = 0;
             dy = 0;
             gameOver = false;
@@ -99,7 +106,7 @@
             baseSpeed = 10;
             speedMultiplier = 1;
             keyHoldStart = null;
-            hasStarted = false; // Reset flagi startu
+            hasStarted = false;
             scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
         }
 
@@ -131,7 +138,7 @@
                 if (!keyHoldStart) keyHoldStart = performance.now();
                 if (!hasStarted) {
                     hasStarted = true;
-                    startSound.play(); // Dźwięk przy pierwszym ruchu
+                    startSound.play();
                 }
             }
             if (keyPressed === UP_KEY && !goingDown) {
@@ -140,7 +147,7 @@
                 if (!keyHoldStart) keyHoldStart = performance.now();
                 if (!hasStarted) {
                     hasStarted = true;
-                    startSound.play(); // Dźwięk przy pierwszym ruchu
+                    startSound.play();
                 }
             }
             if (keyPressed === RIGHT_KEY && !goingLeft) {
@@ -149,7 +156,7 @@
                 if (!keyHoldStart) keyHoldStart = performance.now();
                 if (!hasStarted) {
                     hasStarted = true;
-                    startSound.play(); // Dźwięk przy pierwszym ruchu
+                    startSound.play();
                 }
             }
             if (keyPressed === DOWN_KEY && !goingUp) {
@@ -158,7 +165,7 @@
                 if (!keyHoldStart) keyHoldStart = performance.now();
                 if (!hasStarted) {
                     hasStarted = true;
-                    startSound.play(); // Dźwięk przy pierwszym ruchu
+                    startSound.play();
                 }
             }
         }
@@ -176,13 +183,22 @@
             scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
         }
 
+        function spawnSpecialFood() {
+            if (!specialFood && Math.random() < 0.02) {
+                specialFood = {
+                    x: Math.floor(Math.random() * tileCount),
+                    y: Math.floor(Math.random() * tileCount)
+                };
+            }
+        }
+
         function gameLoop(timestamp) {
             if (gameOver) {
                 updateHighScore();
                 ctx.fillStyle = "black";
                 ctx.font = "30px Arial";
                 ctx.fillText("Game Over! Press Space to Restart", 50, canvas.height / 2);
-                gameOverSound.play(); // Dźwięk przegranej
+                gameOverSound.play();
                 return;
             }
 
@@ -207,13 +223,17 @@
                         y: Math.floor(Math.random() * tileCount)
                     };
                     score += 1;
-                    if (score % 5 === 0) {
-                        baseSpeed += 2;
-                    }
-                    scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
-                    eatSound.play(); // Dźwięk zjedzenia jedzenia
+                    eatSound.play();
+                } else if (specialFood && head.x === specialFood.x && head.y === specialFood.y) {
+                    specialFood = null;
+                    score += 5;
+                    specialEatSound.play();
                 } else {
                     snake.pop();
+                }
+
+                if (score % 5 === 0) {
+                    baseSpeed += 2;
                 }
 
                 if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
@@ -226,6 +246,7 @@
                     }
                 }
 
+                spawnSpecialFood();
                 lastMoveTime = 0;
             }
 
@@ -233,14 +254,25 @@
 
             snake.forEach((segment, index) => {
                 if (index === 0) {
-                    ctx.drawImage(snakeHeadImage, segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
+                    ctx.save();
+                    ctx.translate(segment.x * gridSize + gridSize / 2, segment.y * gridSize + gridSize / 2);
+                    if (dx === 1) ctx.rotate(0);
+                    else if (dx === -1) ctx.rotate(Math.PI);
+                    else if (dy === -1) ctx.rotate(Math.PI / 2);
+                    else if (dy === 1) ctx.rotate(-Math.PI / 2);
+                    ctx.drawImage(snakeHeadImage, -gridSize / 2, -gridSize / 2, gridSize, gridSize);
+                    ctx.restore();
                 } else {
                     ctx.drawImage(snakeBodyImage, segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
                 }
             });
 
             ctx.drawImage(foodImage, food.x * gridSize, food.y * gridSize, gridSize, gridSize);
+            if (specialFood) {
+                ctx.drawImage(specialFoodImage, specialFood.x * gridSize, specialFood.y * gridSize, gridSize, gridSize);
+            }
 
+            scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
             requestAnimationFrame(gameLoop);
         }
     </script>
