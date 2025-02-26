@@ -48,14 +48,7 @@
         let lastMoveTime = 0;
         let keyHoldStart = null;
         let hasStarted = false;
-
-        // Płynny ruch węża
-        let snakePos = []; // Rzeczywiste pozycje w pikselach
-        let moveProgress = 0; // Progres ruchu między polami (0-1)
-
-        // Animacja pulsowania
-        let pulseScale = 1;
-        let pulseDirection = 0.02; // Szybkość pulsowania
+        let speedIncrementCount = 0;
 
         // Ładowanie grafik
         const snakeHeadImage = new Image();
@@ -101,8 +94,7 @@
         scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
 
         function resetGame() {
-            snake = [{ x: 10, y: 10 }];
-            snakePos = [{ x: 10 * gridSize, y: 10 * gridSize }];
+            snake = [{ x: 10, y: 10 }]; // Początkowa długość: 1 pole
             food = {
                 x: Math.floor(Math.random() * tileCount),
                 y: Math.floor(Math.random() * tileCount)
@@ -116,7 +108,8 @@
             speedMultiplier = 1;
             keyHoldStart = null;
             hasStarted = false;
-            moveProgress = 0;
+            speedIncrementCount = 0;
+            lastMoveTime = 0;
             scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
         }
 
@@ -202,6 +195,13 @@
             }
         }
 
+        function growSnake(amount) {
+            const tail = { ...snake[snake.length - 1] }; // Kopia pozycji ogona
+            for (let i = 0; i < amount; i++) {
+                snake.push(tail);
+            }
+        }
+
         function gameLoop(timestamp) {
             if (gameOver) {
                 updateHighScore();
@@ -223,15 +223,13 @@
             const frameTime = 1000 / (baseSpeed * speedMultiplier);
             lastMoveTime += deltaTime;
 
-            // Aktualizacja pulsowania
-            pulseScale += pulseDirection;
-            if (pulseScale > 1.2 || pulseScale < 0.8) pulseDirection = -pulseDirection;
-
             if (lastMoveTime >= frameTime) {
+                // Ruch węża
                 const head = { x: snake[0].x + dx, y: snake[0].y + dy };
                 snake.unshift(head);
-                snakePos.unshift({ x: head.x * gridSize, y: head.y * gridSize });
 
+                // Sprawdzanie jedzenia
+                let ateFood = false;
                 if (head.x === food.x && head.y === food.y) {
                     food = {
                         x: Math.floor(Math.random() * tileCount),
@@ -239,23 +237,31 @@
                     };
                     score += 1;
                     eatSound.play();
+                    growSnake(1); // Wzrost o 1 pole
+                    ateFood = true;
                 } else if (specialFood && head.x === specialFood.x && head.y === specialFood.y) {
                     specialFood = null;
                     score += 5;
                     specialEatSound.play();
-                } else {
+                    growSnake(3); // Wzrost o 3 pola
+                    ateFood = true;
+                }
+
+                // Skrócenie węża tylko, jeśli nie zjedzono jedzenia
+                if (!ateFood) {
                     snake.pop();
-                    snakePos.pop();
                 }
 
-                if (score % 5 === 0 && score > 0) {
-                    baseSpeed += 2;
+                // Przyspieszenie co 5 punktów
+                if (score % 5 === 0 && score > 0 && Math.floor(score / 5) > speedIncrementCount) {
+                    speedIncrementCount++;
+                    baseSpeed = Math.min(baseSpeed + 1, 20);
                 }
 
+                // Kolizje
                 if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
                     gameOver = true;
                 }
-
                 for (let i = 1; i < snake.length; i++) {
                     if (head.x === snake[i].x && head.y === snake[i].y) {
                         gameOver = true;
@@ -264,29 +270,18 @@
 
                 spawnSpecialFood();
                 lastMoveTime = 0;
-                moveProgress = 0;
+
+                // Debugowanie długości węża
+                console.log(`Snake length: ${snake.length}`);
             }
 
-            // Płynny ruch
-            moveProgress += deltaTime / (frameTime / 2); // Szybkość płynności
-            if (moveProgress > 1) moveProgress = 1;
-
+            // Rysowanie bez animacji
             ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
 
-            // Rysowanie węża z płynnym ruchem
-            snakePos.forEach((pos, index) => {
-                let renderX = pos.x;
-                let renderY = pos.y;
-                if (index === 0 && moveProgress < 1) {
-                    const prevX = snake[1] ? snake[1].x * gridSize : pos.x;
-                    const prevY = snake[1] ? snake[1].y * gridSize : pos.y;
-                    renderX = prevX + (pos.x - prevX) * moveProgress;
-                    renderY = prevY + (pos.y - prevY) * moveProgress;
-                }
-
+            snake.forEach((segment, index) => {
                 if (index === 0) {
                     ctx.save();
-                    ctx.translate(renderX + gridSize / 2, renderY + gridSize / 2);
+                    ctx.translate(segment.x * gridSize + gridSize / 2, segment.y * gridSize + gridSize / 2);
                     if (dx === 1) ctx.rotate(0);
                     else if (dx === -1) ctx.rotate(Math.PI);
                     else if (dy === -1) ctx.rotate(Math.PI / 2);
@@ -294,16 +289,13 @@
                     ctx.drawImage(snakeHeadImage, -gridSize / 2, -gridSize / 2, gridSize, gridSize);
                     ctx.restore();
                 } else {
-                    ctx.drawImage(snakeBodyImage, renderX, renderY, gridSize, gridSize);
+                    ctx.drawImage(snakeBodyImage, segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
                 }
             });
 
-            // Rysowanie jedzenia
             ctx.drawImage(foodImage, food.x * gridSize, food.y * gridSize, gridSize, gridSize);
             if (specialFood) {
-                const scale = pulseScale * gridSize;
-                const offset = (gridSize - scale) / 2;
-                ctx.drawImage(specialFoodImage, specialFood.x * gridSize + offset, specialFood.y * gridSize + offset, scale, scale);
+                ctx.drawImage(specialFoodImage, specialFood.x * gridSize, specialFood.y * gridSize, gridSize, gridSize);
             }
 
             scoreDisplay.textContent = `Score: ${score} | High Score: ${highScore}`;
