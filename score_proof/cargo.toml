@@ -6,4 +6,12 @@ edition = "2021"
 [dependencies]
 wasm-bindgen = "0.2"
 serde = { version = "1.0", features = ["derive"] }
-serde-wasm-bindgen = "0
+serde-wasm-bindgen = "0.4"
+sp1-sdk = "1.0.0-rc2"  # Adjust to latest version from succinct.xyz
+
+[lib]
+crate-type = ["cdylib"]  # For WASM
+
+[[bin]]
+name = "score_proof"
+path = "src/lib.rs"  # For ELF
