@@ -23,7 +23,8 @@ pub fn prove_score(events: JsValue) -> JsValue {
     serde_wasm_bindgen::to_value(&result).unwrap()
 }
 
-// SP1 proving function
+// SP1 proving function for ELF
+#[cfg(not(target_arch = "wasm32"))]
 pub fn prove_score_with_sp1(events: Vec<GameEvent>) -> (u32, Vec<u8>) {
     let score = events.iter().fold(0, |acc, event| {
         match event.event_type.as_str() {
@@ -42,14 +43,14 @@ pub fn prove_score_with_sp1(events: Vec<GameEvent>) -> (u32, Vec<u8>) {
     (score, proof)
 }
 
-// Main function for ELF
+// Main function for ELF binary
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    let example_events = vec![
-        GameEvent { event_type: "food".to_string(), timestamp: 1630000000000 },
-        GameEvent { event_type: "special_food".to_string(), timestamp: 1630000001000 },
+    // Example usage for testing
+    let events = vec![
+        GameEvent { event_type: "food".to_string(), timestamp: 1630000000 },
+        GameEvent { event_type: "special_food".to_string(), timestamp: 1630000001 },
     ];
-    
-    let (score, proof) = prove_score_with_sp1(example_events);
+    let (score, proof) = prove_score_with_sp1(events);
     println!("Score: {}, Proof: {:?}", score, proof);
 }
