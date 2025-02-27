@@ -38,7 +38,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
-    <!-- Load WASM module for score proof -->
+    <!-- Load WASM module for score proof (kept as fallback) -->
     <script type="module">
         import init, { prove_score } from './pkg/score_proof.js';
         
@@ -95,7 +95,7 @@
         let keyHoldStart = null;
         let hasStarted = false;
         let speedIncrementCount = 0;
-        let gameEvents = []; // Added to track score events
+        let gameEvents = [];
 
         // Load graphics
         const snakeHeadImage = new Image();
@@ -116,14 +116,14 @@
         const specialEatSound = new Audio("https://raw.githubusercontent.com/Florian96OG/SuccinctSnake/main/special_eat.mp3");
 
         let resourcesLoaded = 0;
-        const totalResources = 9; // 5 graphics + 4 sounds
+        const totalResources = 9;
 
         function resourceLoaded() {
             resourcesLoaded++;
             console.log(`Loaded ${resourcesLoaded}/${totalResources} resources`);
             if (resourcesLoaded === totalResources) {
                 resetGame();
-                requestAnimationFrame(gameLoop); // Initial call remains the same
+                requestAnimationFrame(gameLoop);
                 if (leaderboardRef) loadLeaderboard();
             }
         }
@@ -163,7 +163,7 @@
             dy = 0;
             gameOver = false;
             score = 0;
-            gameEvents = []; // Reset events for new game
+            gameEvents = [];
             baseSpeed = 10;
             speedMultiplier = 1;
             keyHoldStart = null;
@@ -278,7 +278,7 @@
                     name: playerName,
                     score: score,
                     timestamp: Date.now(),
-                    proof: window.lastProof ? Array.from(window.lastProof) : [1, 2, 3] // Include proof
+                    proof: window.lastProof ? Array.from(window.lastProof) : [1, 2, 3]
                 };
                 leaderboardRef.push(entry).then(() => {
                     console.log("Score and proof saved");
@@ -322,17 +322,34 @@
             }
         }
 
-        // Made async to handle WASM calls
+        // NEW: Function to call the server for real proofs
+        async function proveScore(events) {
+            try {
+                const response = await fetch('http://localhost:3000/prove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(events)
+                });
+                const { score, proof } = await response.json();
+                return [score, proof];
+            } catch (e) {
+                console.error("Proof server error:", e);
+                if (window.wasmModule) {
+                    const proofResult = await window.wasmModule.prove_score(events);
+                    return proofResult; // Fallback to WASM mock
+                }
+                return [score, [1, 2, 3]]; // Last resort
+            }
+        }
+
         async function gameLoop(timestamp) {
             if (gameOver) {
                 updateHighScore();
-                if (window.wasmModule) {
-                    const proofResult = await window.wasmModule.prove_score(gameEvents);
-                    const [provenScore, proof] = proofResult;
-                    score = provenScore; // Update score with proven value
-                    window.lastProof = proof; // Store proof for leaderboard
-                    console.log("Proven score:", score, "Proof:", proof);
-                }
+                // CHANGED: Use proveScore instead of WASM directly
+                const [provenScore, proof] = await proveScore(gameEvents);
+                score = provenScore;
+                window.lastProof = proof;
+                console.log("Proven score:", score, "Proof:", proof);
                 saveScore();
                 ctx.fillStyle = "black";
                 ctx.font = "30px Arial";
@@ -361,12 +378,12 @@
                         x: Math.floor(Math.random() * tileCount),
                         y: Math.floor(Math.random() * tileCount)
                     };
-                    gameEvents.push({ type: "food", timestamp: Date.now() }); // Track event
-                    score += 1; // Temporary, will rely on proof later
+                    gameEvents.push({ type: "food", timestamp: Date.now() });
+                    score += 1; // Temporary
                     eatSound.play();
                 } else if (specialFood && head.x === specialFood.x && head.y === specialFood.y) {
                     specialFood = null;
-                    gameEvents.push({ type: "special_food", timestamp: Date.now() }); // Track event
+                    gameEvents.push({ type: "special_food", timestamp: Date.now() });
                     score += 5; // Temporary
                     specialEatSound.play();
                     growSnake(2);
